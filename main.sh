@@ -1,0 +1,156 @@
+#!/bin/bash
+set -euo pipefail
+
+BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export SCRIPTS_DIR="${BASE_DIR}/scripts"
+export CONFIG_DIR="${BASE_DIR}/config"
+
+source "${SCRIPTS_DIR}/lib/logging.sh"
+source "${CONFIG_DIR}/variables.sh"
+
+usage() {
+cat << EOF
+Usage: $0 [OPTIONS]
+
+DEPLOYMENT:
+  --full            Full deployment (default)
+  --topology-only   Deploy topology only
+  --skip-cleanup    Skip cleanup phase
+
+CLEANUP:
+  --destroy         Stop and remove containers
+  --purge           Destroy + remove Docker images
+
+  --help, -h        Show this help
+EOF
+exit 0
+}
+
+TOPOLOGY_ONLY=false; SKIP_CLEANUP=false; FULL_DEPLOY=true
+DESTROY_MODE=false; PURGE_MODE=false
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --topology-only) TOPOLOGY_ONLY=true; FULL_DEPLOY=false; shift ;;
+    --full) FULL_DEPLOY=true; shift ;;
+    --skip-cleanup) SKIP_CLEANUP=true; shift ;;
+    --destroy) DESTROY_MODE=true; shift ;;
+    --purge) PURGE_MODE=true; shift ;;
+    --help|-h) usage ;;
+    *) log_error "Unknown: $1"; usage ;;
+  esac
+done
+
+# === Destroy/Purge ===
+if [ "$DESTROY_MODE" = true ] || [ "$PURGE_MODE" = true ]; then
+    log_section "Destroying yw_dmz_lab"
+    sudo containerlab destroy --topo topology/DMZ.yml --cleanup 2>/dev/null || true
+    docker rm -f $(docker ps -aq --filter "name=clab-${LAB_NAME}") 2>/dev/null || true
+    docker network prune -f 2>/dev/null || true
+    if [ "$PURGE_MODE" = true ]; then
+        log_info "Removing Docker images..."
+        for img in $IMG_ALPINE $IMG_UBUNTU $IMG_FRR $IMG_NGINX $IMG_POSTGRES \
+                   $IMG_SURICATA $IMG_KALI $IMG_MODSEC $IMG_ELASTIC $IMG_LOGSTASH $IMG_KIBANA; do
+            docker rmi "$img" 2>/dev/null || true
+        done
+    fi
+    log_ok "Cleanup complete"
+    exit 0
+fi
+
+# === Main Deployment ===
+log_section "Starting yw_dmz_lab Deployment"
+
+if [ "$SKIP_CLEANUP" = false ]; then
+    log_info "Cleaning up previous environment..."
+    sudo containerlab destroy --topo topology/DMZ.yml --cleanup 2>/dev/null || true
+    docker rm -f $(docker ps -aq --filter "name=clab-${LAB_NAME}") 2>/dev/null || true
+    docker network prune -f 2>/dev/null || true
+fi
+
+log_info "Setting vm.max_map_count..."
+sudo sysctl -w vm.max_map_count=262144 2>/dev/null || true
+
+log_info "Generating topology..."
+bash topology/topology-generator.sh
+
+log_info "Deploying topology..."
+cd topology && sudo containerlab deploy --topo DMZ.yml && cd ..
+
+log_info "Verifying containers..."
+RUNNING=$(docker ps --filter "name=clab-${LAB_NAME}" --format "{{.Names}}" | wc -l)
+log_info "Running containers: $RUNNING"
+
+if [ "$TOPOLOGY_ONLY" = true ]; then
+    log_ok "Topology-only deployment complete!"
+    exit 0
+fi
+
+# === Configuration Phase ===
+log_section "Configuration Phase"
+
+log_info "Waiting for Elasticsearch..."
+until sudo docker exec clab-${LAB_NAME}-elasticsearch curl -s http://localhost:9200/_cluster/health 2>/dev/null | grep -q '"status"'; do
+    sleep 5
+done
+log_ok "Elasticsearch ready"
+
+log_info "Configuring External Firewall..."
+bash scripts/configure/firewalls/external-fw.sh 2>/dev/null || log_warn "external-fw.sh not found"
+
+log_info "Configuring SIEM Firewall..."
+bash scripts/configure/firewalls/siem-fw.sh 2>/dev/null || log_warn "siem-fw.sh not found"
+
+log_info "Configuring DMZ IDS..."
+bash scripts/configure/ids/ids-dmz.sh 2>/dev/null || log_warn "ids-dmz.sh not found"
+
+log_info "Configuring network..."
+bash scripts/configure/network/router-edge.sh 2>/dev/null || log_warn "router-edge.sh not found"
+bash scripts/configure/network/router-internet.sh 2>/dev/null || log_warn "router-internet.sh not found"
+
+log_info "Configuring DMZ services..."
+bash scripts/configure/dmz/database.sh 2>/dev/null || log_warn "database.sh not found"
+bash scripts/configure/dmz/webserver.sh 2>/dev/null || log_warn "webserver.sh not found"
+bash scripts/configure/dmz/proxy.sh 2>/dev/null || log_warn "proxy.sh not found"
+
+log_info "Configuring SIEM stack..."
+bash scripts/configure/siem/logstash.sh
+bash scripts/configure/siem/elasticsearch.sh 2>/dev/null || log_warn "elasticsearch.sh not found"
+bash scripts/configure/siem/kibana.sh 2>/dev/null || log_warn "kibana.sh not found"
+
+# === Post-deploy: Filebeat, nginx, Data Views ===
+log_info "Starting Filebeat..."
+sudo docker exec clab-${LAB_NAME}-External_FW bash -c '
+  rm -rf /var/lib/filebeat/*
+  /usr/share/filebeat/bin/filebeat -e -c /etc/filebeat/filebeat.yml \
+    --path.home /usr/share/filebeat --path.data /var/lib/filebeat \
+    --path.logs /var/log/filebeat > /tmp/fb.log 2>&1 &
+' 2>/dev/null || log_warn "Filebeat start failed"
+
+log_info "Starting nginx in WAF..."
+sudo docker exec clab-${LAB_NAME}-Proxy_WAF sh -c 'nginx 2>/dev/null' || true
+
+log_info "Adding SIEM_FW forwarding rules..."
+sudo docker exec clab-${LAB_NAME}-SIEM_FW bash -c '
+  iptables -I FORWARD 1 -p tcp --dport 5044 -j ACCEPT
+  iptables -I FORWARD 2 -p tcp --dport 5045 -j ACCEPT
+  iptables -I FORWARD 3 -p icmp -j ACCEPT
+  iptables -I FORWARD 4 -m state --state ESTABLISHED,RELATED -j ACCEPT
+' 2>/dev/null || true
+
+log_info "Creating Kibana Data Views..."
+sleep 30
+for view in '{"title":"firewall-*","timeFieldName":"@timestamp","name":"firewall_logs"}' \
+            '{"title":"suricata-*","timeFieldName":"@timestamp","name":"suricata_alerts"}' \
+            '{"title":"filebeat-*","timeFieldName":"@timestamp","name":"filebeat"}'; do
+    curl -s -X POST "http://localhost:5601/api/data_views/data_view" \
+        -H "kbn-xsrf: true" -H "Content-Type: application/json" \
+        -d "{\"data_view\":$view}" 2>/dev/null || true
+done
+
+log_section "yw_dmz_lab Deployment Complete!"
+log_ok "Services:"
+log_info "  Kibana:        http://localhost:5601"
+log_info "  Elasticsearch: http://localhost:9200"
+log_info "  Web App (WAF): http://localhost:8080"
+log_info "  Destroy:       sudo bash main.sh --destroy"

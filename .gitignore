@@ -1,0 +1,6 @@
+*.log
+*.tar.gz
+*.rpm
+*.bak
+*.pid
+topology/clab-*/

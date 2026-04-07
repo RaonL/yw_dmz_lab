@@ -1,0 +1,6 @@
+api.http.host: 0.0.0.0
+log.level: info
+path.config: /usr/share/logstash/pipeline
+path.data: /usr/share/logstash/data
+path.logs: /usr/share/logstash/logs
+queue.type: memory
