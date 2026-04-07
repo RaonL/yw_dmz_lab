@@ -4,3 +4,4 @@ path.config: /usr/share/logstash/pipeline
 path.data: /usr/share/logstash/data
 path.logs: /usr/share/logstash/logs
 queue.type: memory
+xpack.monitoring.enabled: ${XPACK_MONITORING_ENABLED}

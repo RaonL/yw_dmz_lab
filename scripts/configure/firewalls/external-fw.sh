@@ -62,16 +62,14 @@ apt-get install -y --no-install-recommends \
 echo "[OK] Packages installed"
 
 echo "[2/7] Installing Filebeat..."
-# Install Filebeat
-wget -qO - https://artifacts.elastic.co/GPG-KEY-elasticsearch | apt-key add -
-echo "deb https://artifacts.elastic.co/packages/8.x/apt stable main" | tee -a /etc/apt/sources.list.d/elastic-8.x.list
-apt-get update -qq
-apt-get install -y filebeat 2>&1 | tail -10
+if ! command -v filebeat &>/dev/null; then
+  echo "Filebeat not found, please install manually"
 
-# Switch to iptables-legacy
-echo "[3/7] Switching to iptables-legacy..."
-update-alternatives --set iptables /usr/sbin/iptables-legacy 2>/dev/null || true
-update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy 2>/dev/null || true
+fi
+# Switch to iptables-nft
+echo "[3/7] Switching to iptables-nft..."
+update-alternatives --set iptables /usr/sbin/iptables-nft 2>/dev/null || true
+update-alternatives --set ip6tables /usr/sbin/ip6tables-nft 2>/dev/null || true
 echo "[OK] Using: \$(iptables --version)"
 
 # Configure network interfaces
@@ -79,11 +77,11 @@ echo "[4/7] Configuring network interfaces..."
 ip addr add "${EXT_FW_ETH1_IP}" dev eth1 2>/dev/null || true   # DMZ
 ip addr add "${EXT_FW_ETH2_IP}" dev eth2 2>/dev/null || true   # Router Edge
 ip addr add "${EXT_FW_ETH3_IP}" dev eth3 2>/dev/null || true   # Internal_FW link
-ip addr add "${EXT_FW_ETH4_IP}" dev eth4 2>/dev/null || true               # to SIEM_FW
+# ip addr add "${EXT_FW_ETH4_IP}" dev eth4 2>/dev/null || true               # to SIEM_FW
 ip link set eth1 up
 ip link set eth2 up
 ip link set eth3 up
-ip link set eth4 up
+# ip link set eth4 up
 echo 1 > /proc/sys/net/ipv4/ip_forward
 echo "[OK] Network configured"
 
@@ -291,10 +289,10 @@ iptables -A FORWARD -i eth1 -o eth2 -m conntrack --ctstate NEW \
 iptables -A FORWARD -i eth1 -o eth2 -m conntrack --ctstate NEW -j ACCEPT
 
 # Internal → Internet
-iptables -A FORWARD -i eth4 -o eth2 -m conntrack --ctstate NEW \
-	-m limit --limit 10/min --limit-burst 20 -j NFLOG \
-	--nflog-prefix "[EXT-FW-INTERN-TO-INET] " --nflog-group 0
-iptables -A FORWARD -i eth4 -o eth2 -m conntrack --ctstate NEW -j ACCEPT
+# iptables -A FORWARD -i eth4 -o eth2 -m conntrack --ctstate NEW \
+# 	-m limit --limit 10/min --limit-burst 20 -j NFLOG \
+# 	--nflog-prefix "[EXT-FW-INTERN-TO-INET] " --nflog-group 0
+# iptables -A FORWARD -i eth4 -o eth2 -m conntrack --ctstate NEW -j ACCEPT
 
 # Internet → DMZ (other)
 iptables -A FORWARD -i eth2 -o eth1 -m conntrack --ctstate NEW \
@@ -303,10 +301,10 @@ iptables -A FORWARD -i eth2 -o eth1 -m conntrack --ctstate NEW \
 iptables -A FORWARD -i eth2 -o eth1 -m conntrack --ctstate NEW -j DROP
 
 # Internet → Internal
-iptables -A FORWARD -i eth2 -o eth4 -m conntrack --ctstate NEW \
-	-m limit --limit 1000/min --limit-burst 2000 -j NFLOG \
-	--nflog-prefix "[EXT-FW-INET-TO-INTERN-DROP] " --nflog-group 0
-iptables -A FORWARD -i eth2 -o eth4 -m conntrack --ctstate NEW -j DROP
+# iptables -A FORWARD -i eth2 -o eth4 -m conntrack --ctstate NEW \
+# 	-m limit --limit 1000/min --limit-burst 2000 -j NFLOG \
+# 	--nflog-prefix "[EXT-FW-INET-TO-INTERN-DROP] " --nflog-group 0
+# iptables -A FORWARD -i eth2 -o eth4 -m conntrack --ctstate NEW -j DROP
 
 # Catch-all
 iptables -A FORWARD -m limit --limit 500/min --limit-burst 1000 -j NFLOG \
@@ -333,7 +331,7 @@ echo "[OK] iptables rules and NAT configured"
 
 # Routing
 ip route replace "${SUBNET_EDGE_1}" via "${ROUTER_EDGE_ETH2_IP%/*}" dev eth2 2>/dev/null || true
-ip route replace "${SUBNET_INTERNAL}" via "${INT_FW_ETH3_IP%/*}" dev eth4 2>/dev/null || true
+# ip route replace "${SUBNET_INTERNAL}" via "${INT_FW_ETH3_IP%/*}" dev eth4 2>/dev/null || true
 ip route add "${SUBNET_BACKEND}" via "${SIEM_FW_ETH2_IP%/*}" dev eth3 2>/dev/null || true
 ip route add "${SUBNET_INTERNET}" via "${ROUTER_EDGE_ETH2_IP%/*}" dev eth2 2>/dev/null || true
 

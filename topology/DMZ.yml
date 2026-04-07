@@ -1,0 +1,148 @@
+name: yw-dmz
+
+mgmt:
+  network: mgmt-net
+  ipv4-subnet: 172.20.20.0/24
+
+topology:
+  nodes:
+    # === Internet Zone ===
+    Attacker:
+      kind: linux
+      image: kalilinux/kali-rolling
+      group: internet
+
+    router-internet:
+      kind: linux
+      image: frrouting/frr:latest
+      group: internet
+
+    router-edge:
+      kind: linux
+      image: frrouting/frr:latest
+      group: edge
+
+    # === DMZ Zone ===
+    External_FW:
+      kind: linux
+      image: ubuntu:latest
+      group: dmz
+      cap-add:
+        - NET_ADMIN
+
+    DMZ_Switch:
+      kind: linux
+      image: frrouting/frr:latest
+      group: dmz
+
+    Proxy_WAF:
+      kind: linux
+      image: owasp/modsecurity-crs:nginx
+      group: dmz
+      startup-delay: 10
+      ports:
+        - "8080:8080"
+      cap-add:
+        - NET_ADMIN
+
+    Flask_Webserver:
+      kind: linux
+      image: ubuntu:latest
+      group: dmz
+
+    Database:
+      kind: linux
+      image: postgres:16
+      group: dmz
+      ports:
+        - "3636:5432"
+      env:
+        POSTGRES_PASSWORD: admin123
+        POSTGRES_DB: webapp
+
+    DMZ_IDS:
+      kind: linux
+      image: jasonish/suricata:latest
+      group: dmz
+      startup-delay: 15
+      binds:
+        - /home/clab/yw_dmz_lab/config/suricata/rules:/etc/suricata/rules:ro
+      cap-add:
+        - NET_ADMIN
+        - SYS_NICE
+
+    # === SIEM Zone ===
+    SIEM_FW:
+      kind: linux
+      image: ubuntu:latest
+      group: siem
+      cap-add:
+        - NET_ADMIN
+
+    elasticsearch:
+      kind: linux
+      image: docker.elastic.co/elasticsearch/elasticsearch:9.2.1
+      group: siem
+      env:
+        discovery.type: single-node
+        ES_JAVA_OPTS: "-Xms512m -Xmx512m"
+        xpack.security.enabled: "false"
+      ports:
+        - "9200:9200"
+      cap-add:
+        - NET_ADMIN
+
+    logstash:
+      kind: linux
+      image: docker.elastic.co/logstash/logstash:9.2.1
+      group: siem
+      startup-delay: 10
+      cmd: tail -f /dev/null
+      binds:
+        - /home/clab/yw_dmz_lab/config/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:rw
+        - /home/clab/yw_dmz_lab/config/logstash/pipeline:/usr/share/logstash/pipeline:ro
+      env:
+        XPACK_MONITORING_ENABLED: "false"
+        LS_JAVA_OPTS: "-Xmx512m -Xms512m"
+      cap-add:
+        - NET_ADMIN
+
+    kibana:
+      kind: linux
+      image: docker.elastic.co/kibana/kibana:9.2.1
+      group: siem
+      env:
+        ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
+      ports:
+        - "5601:5601"
+      cap-add:
+        - NET_ADMIN
+
+    siem_pc:
+      kind: linux
+      image: alpine:latest
+      group: siem
+
+  links:
+    # Internet path
+    - endpoints: ["router-internet:eth1", "Attacker:eth1"]
+    - endpoints: ["router-edge:eth1", "router-internet:eth2"]
+    - endpoints: ["External_FW:eth2", "router-edge:eth2"]
+
+    # DMZ connections
+    - endpoints: ["DMZ_Switch:eth1", "External_FW:eth1"]
+    - endpoints: ["DMZ_Switch:eth2", "Proxy_WAF:eth1"]
+    - endpoints: ["Proxy_WAF:eth2", "Flask_Webserver:eth1"]
+    - endpoints: ["Flask_Webserver:eth2", "Database:eth1"]
+    - endpoints: ["DMZ_Switch:eth3", "DMZ_IDS:eth1"]
+
+    # SIEM connections
+    - endpoints: ["External_FW:eth3", "SIEM_FW:eth2"]
+    - endpoints: ["SIEM_FW:eth3", "logstash:eth1"]
+    - endpoints: ["SIEM_FW:eth4", "elasticsearch:eth3"]
+    - endpoints: ["SIEM_FW:eth5", "kibana:eth2"]
+    - endpoints: ["SIEM_FW:eth6", "siem_pc:eth1"]
+    - endpoints: ["SIEM_FW:eth7", "DMZ_IDS:eth2"]
+    - endpoints: ["SIEM_FW:eth9", "Proxy_WAF:eth3"]
+    - endpoints: ["logstash:eth2", "elasticsearch:eth1"]
+    - endpoints: ["elasticsearch:eth2", "kibana:eth1"]

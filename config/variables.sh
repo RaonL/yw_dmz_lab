@@ -49,7 +49,7 @@ export DMZ_IDS_ETH2_IP="10.0.3.38/30"       # to SIEM
 
 # === SIEM Zone ===
 export SIEM_FW_ETH1_IP="10.0.3.1/30"        # from External_FW (not used in DMZ-only)
-export SIEM_FW_ETH2_IP="10.0.3.5/30"        # from External_FW
+export SIEM_FW_ETH2_IP="10.0.3.6/30"        # from External_FW
 export SIEM_FW_ETH3_IP="10.0.3.9/30"        # to Logstash
 export SIEM_FW_ETH4_IP="10.0.3.13/30"       # to Elasticsearch
 export SIEM_FW_ETH5_IP="10.0.3.17/30"       # to Kibana
@@ -68,3 +68,40 @@ export SIEM_PC_ETH1_IP="10.0.3.22/30"
 
 # === Container Names ===
 export CONTAINER_PREFIX="clab-${LAB_NAME}"
+
+# === Missing Variables (DMZ-only compatibility) ===
+# Internal zone (not used but referenced by scripts)
+export SUBNET_INTERNAL="192.168.10.0/24"
+export SUBNET_BETWEEN_FW="192.168.20.0/24"
+export SUBNET_BACKEND="10.0.2.0/24"
+export SUBNET_EDGE_1="172.168.2.0/30"
+export SUBNET_EDGE_2="172.168.3.0/30"
+export SUBNET_INTERNET="200.168.1.0/24"
+export SUBNET_NAT="172.168.3.0/30"
+
+# Internal FW (dummy - not present in DMZ lab)
+export INT_FW_ETH2_IP="10.0.2.1/24"
+export INT_FW_ETH3_IP="192.168.20.1/24"
+export INT_FW_ETH4_IP="10.0.3.2/30"
+
+# External FW additional
+export EXT_FW_ETH4_IP="192.168.20.2/24"
+export EXT_FW_NAT_IP="172.168.3.2"
+
+# DMZ Web
+export DMZ_WEB_CONTAINER="clab-${LAB_NAME}-Flask_Webserver"
+export DMZ_WEB_ETH1_IP="10.0.2.10/24"
+export DMZ_WEB_ETH2_IP="10.0.2.11/24"
+
+# IDS
+export IDS_DMZ_ETH2_IP="10.0.3.38/30"
+
+# SIEM FW additional
+export SIEM_FW_ETH8_IP="10.0.3.29/30"
+
+# Container names
+export EXTERNAL_FW_CONTAINER="clab-${LAB_NAME}-External_FW"
+export SIEM_FW_CONTAINER="clab-${LAB_NAME}-SIEM_FW"
+export ROUTER_EDGE_CONTAINER="clab-${LAB_NAME}-router-edge"
+export ROUTER_INTERNET_CONTAINER="clab-${LAB_NAME}-router-internet"
+export SUBNET_DMZ="10.0.2.0/24"
