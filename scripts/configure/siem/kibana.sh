@@ -58,3 +58,31 @@ for _ in {1..60}; do
 done
 
 log_ok "Kibana configured"
+# Create Kibana Data Views
+log_info "Creating Kibana Data Views..."
+KIBANA_URL="http://${SIEM_KIBANA_ETH2_IP%/*}:5601"
+SIEM_PC_CONTAINER="clab-${LAB_NAME}-siem_pc"
+
+for i in 1 2 3 4 5; do
+  if sudo docker exec ${SIEM_PC_CONTAINER} curl -sf "${KIBANA_URL}/api/status" >/dev/null 2>&1; then
+    break
+  fi
+  sleep 10
+done
+
+# firewall_logs
+sudo docker exec ${SIEM_PC_CONTAINER} curl -sf -X POST "${KIBANA_URL}/api/data_views/data_view" \
+  -H "kbn-xsrf: true" -H "Content-Type: application/json" \
+  -d '{"data_view":{"title":"filebeat-*","name":"firewall_logs","timeFieldName":"@timestamp"}}' >/dev/null 2>&1 || true
+
+# waf_logs  
+sudo docker exec ${SIEM_PC_CONTAINER} curl -sf -X POST "${KIBANA_URL}/api/data_views/data_view" \
+  -H "kbn-xsrf: true" -H "Content-Type: application/json" \
+  -d '{"data_view":{"title":"waf-*","name":"waf_logs","timeFieldName":"@timestamp"}}' >/dev/null 2>&1 || true
+
+# ids_alerts
+sudo docker exec ${SIEM_PC_CONTAINER} curl -sf -X POST "${KIBANA_URL}/api/data_views/data_view" \
+  -H "kbn-xsrf: true" -H "Content-Type: application/json" \
+  -d '{"data_view":{"title":"ids-*","name":"ids_alerts","timeFieldName":"@timestamp"}}' >/dev/null 2>&1 || true
+
+log_ok "Kibana Data Views created"

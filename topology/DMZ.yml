@@ -89,6 +89,7 @@ topology:
         xpack.security.enabled: "false"
       ports:
         - "9200:9200"
+      startup-delay: 15
       cap-add:
         - NET_ADMIN
 
@@ -115,6 +116,7 @@ topology:
         ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
       ports:
         - "5601:5601"
+      startup-delay: 20
       cap-add:
         - NET_ADMIN
 
