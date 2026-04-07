@@ -12,6 +12,16 @@ source "${CONFIG_DIR}/variables.sh"
 
 Proxy_WAF_Container="clab-${LAB_NAME}-Proxy_WAF"
 
+# Network config via nsenter (container has no ip command)
+WAF_PID=$(sudo docker inspect -f '{{.State.Pid}}' ${Proxy_WAF_Container})
+sudo nsenter -t $WAF_PID -n ip addr add ${DMZ_WAF_ETH1_IP} dev eth1 2>/dev/null || true
+sudo nsenter -t $WAF_PID -n ip addr add ${DMZ_WAF_ETH2_IP} dev eth2 2>/dev/null || true
+sudo nsenter -t $WAF_PID -n ip link set eth1 up
+sudo nsenter -t $WAF_PID -n ip link set eth2 up
+sudo nsenter -t $WAF_PID -n ip route add ${SUBNET_INTERNAL} via ${INT_FW_ETH2_IP%/*} dev eth1 2>/dev/null || true
+sudo nsenter -t $WAF_PID -n ip route replace default via ${EXT_FW_ETH1_IP%/*} 2>/dev/null || true
+sudo nsenter -t $WAF_PID -n ip route add ${DMZ_WEB_ETH1_IP%/*} via ${DMZ_WAF_ETH2_IP%/*} dev eth2 2>/dev/null || true
+
 
 sudo docker exec -i --user root \
     -e DMZ_WAF_ETH1_IP="${DMZ_WAF_ETH1_IP}" \
@@ -23,15 +33,7 @@ sudo docker exec -i --user root \
     "${Proxy_WAF_Container}" sh << 'EOF'
 set -e
 
-ip addr add ${DMZ_WAF_ETH1_IP} dev eth1 || true
-ip addr add ${DMZ_WAF_ETH2_IP} dev eth2 || true
-ip link set eth1 up
-ip link set eth2 up
 
-# IP-Route 
-ip route add ${SUBNET_INTERNAL} via ${INT_FW_ETH2_IP%/*} dev eth1 || true
-ip route replace default via ${EXT_FW_ETH1_IP%/*} || true
-ip route add ${DMZ_WEB_ETH1_IP%/*} via ${DMZ_WAF_ETH2_IP%/*} dev eth2 || true
 
 # Find existing modsecurity config path
 MODSEC_CONF=""

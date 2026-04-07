@@ -5,6 +5,12 @@ source "${BASE_DIR}/scripts/lib/logging.sh"
 source "${BASE_DIR}/config/variables.sh"
 
 log_info "=== DMZ Lab Deployment Start ==="
+# 0. DNS setup for all containers
+log_info "[0/7] Setting DNS for all containers..."
+for c in $(docker ps --format "{{.Names}}" | grep "clab-${LAB_NAME}"); do
+  docker exec "$c" bash -c "grep -q 8.8.8.8 /etc/resolv.conf || echo nameserver 8.8.8.8 >> /etc/resolv.conf" 2>/dev/null || true
+done
+
 
 # 1. Network
 log_info "[1/7] Configuring Network..."

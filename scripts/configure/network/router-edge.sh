@@ -26,8 +26,8 @@ sudo docker exec -i \
     "${ROUTER_EDGE_CONTAINER}" sh << 'EOF'
 set -e
 # Interfaces
-ip addr add ${ROUTER_EDGE_ETH1_IP} dev eth1  # from router-internet
-ip addr add ${ROUTER_EDGE_ETH2_IP} dev eth2  # to External_FW
+ip addr add ${ROUTER_EDGE_ETH1_IP} dev eth1 2>/dev/null || true  # from router-internet
+ip addr add ${ROUTER_EDGE_ETH2_IP} dev eth2 2>/dev/null || true  # to External_FW
 ip link set eth1 up
 ip link set eth2 up
 
