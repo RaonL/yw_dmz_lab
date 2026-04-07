@@ -13,6 +13,10 @@ source "${CONFIG_DIR}/variables.sh"
 log_info "Configuring External Firewall"
 
 EXTERNAL_FW_CONTAINER="clab-${LAB_NAME}-External_FW"
+# Flush Docker nft rules that interfere with iptables
+EXT_FW_PID=$(sudo docker inspect -f '{{.State.Pid}}' ${EXTERNAL_FW_CONTAINER})
+sudo nsenter -t $EXT_FW_PID -n nft flush ruleset 2>/dev/null || true
+
 
 
 sudo docker exec -i \
@@ -60,11 +64,12 @@ apt-get install -y --no-install-recommends \
 	2>&1 | tail -10
 
 echo "[OK] Packages installed"
-
 echo "[2/7] Installing Filebeat..."
 if ! command -v filebeat &>/dev/null; then
-  echo "Filebeat not found, please install manually"
-
+  curl -fsSL https://artifacts.elastic.co/GPG-KEY-elasticsearch | gpg --dearmor -o /usr/share/keyrings/elastic.gpg 2>/dev/null
+  echo "deb [signed-by=/usr/share/keyrings/elastic.gpg] https://artifacts.elastic.co/packages/8.x/apt stable main" > /etc/apt/sources.list.d/elastic-8.x.list
+  apt-get update -qq 2>&1 | tail -3
+  apt-get install -y filebeat 2>&1 | tail -5
 fi
 # Switch to iptables-nft
 echo "[3/7] Switching to iptables-nft..."
@@ -334,6 +339,7 @@ ip route replace "${SUBNET_EDGE_1}" via "${ROUTER_EDGE_ETH2_IP%/*}" dev eth2 2>/
 # ip route replace "${SUBNET_INTERNAL}" via "${INT_FW_ETH3_IP%/*}" dev eth4 2>/dev/null || true
 ip route add "${SUBNET_BACKEND}" via "${SIEM_FW_ETH2_IP%/*}" dev eth3 2>/dev/null || true
 ip route add "${SUBNET_INTERNET}" via "${ROUTER_EDGE_ETH2_IP%/*}" dev eth2 2>/dev/null || true
+ip route add 10.0.3.8/30 via "${SIEM_FW_ETH2_IP%/*}" dev eth3 2>/dev/null || true   # to Logstash
 
 echo "[OK] Routing configured"
 echo "=========================================="
