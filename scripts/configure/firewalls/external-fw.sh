@@ -216,10 +216,9 @@ iptables -A FORWARD -m conntrack --ctstate INVALID -j LOG_INVALID
 
 # Established/Related
 iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED \
-	-m limit --limit 500/min --limit-burst 1000 -j NFLOG \
-	--nflog-prefix "[EXT-FW-ESTABLISHED] " --nflog-group 0
-iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+	-j NFLOG --nflog-prefix "[EXT-FW-ESTABLISHED] " --nflog-group 0
 
+iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 # ============================================
 # Internet → Webserver (Port 8443) with DDoS Protection
 # ============================================
