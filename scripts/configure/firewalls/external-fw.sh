@@ -40,6 +40,17 @@ sudo docker exec -i \
 
 
 set -e
+# ============================================
+# FIX DNS (VERY IMPORTANT)
+# ============================================
+echo "[0/7] Fixing DNS..."
+
+cat > /etc/resolv.conf <<EOF_DNS
+nameserver 8.8.8.8
+nameserver 1.1.1.1
+EOF_DNS
+
+echo "[OK] DNS configured"
 
 # ============================================
 # Install packages
