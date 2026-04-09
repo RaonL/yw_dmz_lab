@@ -2,7 +2,28 @@
 
 외부 공격자가 WAF/웹서버를 공격 → 방화벽 차단 + IDS 탐지 → ELK SIEM으로 수집/시각화하는 보안 연구실입니다.
 
-## 구조 (12개 컨테이너)
+
+## 프로젝트구조 
+
+yw_dmz_lab/
+├── main.sh                          # 전체 배포 진입점
+├── topology/
+│   ├── DMZ.yml                      # ContainerLab 토폴로지 정의
+│   └── topology-generator.sh        # 토폴로지 생성 스크립트
+├── config/
+│   ├── variables.sh                 # 전역 환경변수 (IP 등)
+│   ├── webserver-details/app.py     # Flask 웹앱
+│   ├── logstash/pipeline/logstash.conf
+│   ├── kibana/kibana.yml
+│   └── suricata/rules/
+└── scripts/configure/
+    ├── dmz/         (webserver.sh, waf.sh, db.sh ...)
+    ├── firewalls/
+    ├── ids/
+    ├── network/
+    └── siem/        (logstash.sh, kibana.sh, elasticsearch.sh ...)
+
+## 구성 (12개 컨테이너)
 
 ```
 Attacker (Kali) → Router Internet → Router Edge → External_FW
