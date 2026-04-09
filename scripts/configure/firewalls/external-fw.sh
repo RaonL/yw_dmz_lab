@@ -67,7 +67,7 @@ echo "[OK] Packages installed"
 echo "[2/7] Installing Filebeat..."
 if ! command -v filebeat &>/dev/null; then
   curl -fsSL https://artifacts.elastic.co/GPG-KEY-elasticsearch | gpg --dearmor -o /usr/share/keyrings/elastic.gpg 2>/dev/null
-  echo "deb [signed-by=/usr/share/keyrings/elastic.gpg] https://artifacts.elastic.co/packages/8.x/apt stable main" > /etc/apt/sources.list.d/elastic-8.x.list
+  echo "deb [signed-by=/usr/share/keyrings/elastic.gpg] https://artifacts.elastic.co/packages/9.x/apt stable main" > /etc/apt/sources.list.d/elastic-9.x.list
   apt-get update -qq 2>&1 | tail -3
   apt-get install -y filebeat 2>&1 | tail -5
 fi
