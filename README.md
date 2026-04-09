@@ -26,7 +26,7 @@ yw_dmz_lab/
 
 ## 구성 (12개 컨테이너)
 
-```
+```text
 Attacker (Kali) → Router Internet → Router Edge → External_FW
                                                       │
                                               ┌───────┴───────┐
