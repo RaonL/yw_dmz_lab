@@ -1,13 +1,17 @@
 #!/bin/bash
+
 set -euo pipefail
 
 BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
 source "${BASE_DIR}/config/variables.sh"
 
 TOPO_DIR="${BASE_DIR}/topology"
+
 TOPO_FILE="${TOPO_DIR}/DMZ.yml"
 
 cat > "$TOPO_FILE" << YAML
+
 name: ${LAB_NAME}
 
 mgmt:
@@ -93,6 +97,7 @@ topology:
       kind: linux
       image: ${IMG_ELASTIC}
       group: siem
+      startup-delay: 15
       env:
         discovery.type: single-node
         ES_JAVA_OPTS: "-Xms512m -Xmx512m"
@@ -121,10 +126,13 @@ topology:
       kind: linux
       image: ${IMG_KIBANA}
       group: siem
+      startup-delay: 20
       env:
         ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
       ports:
         - "5601:5601"
+      binds:
+        - ${BASE_DIR}/config/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:rw
       cap-add:
         - NET_ADMIN
 
@@ -156,6 +164,7 @@ topology:
     - endpoints: ["SIEM_FW:eth9", "Proxy_WAF:eth3"]
     - endpoints: ["logstash:eth2", "elasticsearch:eth1"]
     - endpoints: ["elasticsearch:eth2", "kibana:eth1"]
+
 YAML
 
 echo "Topology file generated: $TOPO_FILE"
