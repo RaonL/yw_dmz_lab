@@ -1,0 +1,48 @@
+# filebeat.yml - External_FW용 Filebeat 설정
+# 위치: /etc/filebeat/filebeat.yml (External_FW 컨테이너 내부)
+
+filebeat.inputs:
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/syslog
+      - /var/log/kern.log
+      - /var/log/ufw.log
+    fields:
+      log_type: firewall
+      source_host: external_fw
+    fields_under_root: true
+    multiline.pattern: '^\w{3}\s+\d{1,2}'
+    multiline.negate: true
+    multiline.match: after
+
+  - type: log
+    enabled: true
+    paths:
+      - /var/log/iptables.log
+    fields:
+      log_type: iptables
+      source_host: external_fw
+    fields_under_root: true
+
+output.logstash:
+  # Logstash IP: SIEM_LOGSTASH_ETH1_IP = 10.0.3.10
+  # SIEM_FW가 포트 5044 포워딩을 허용 (iptables FORWARD 규칙)
+  hosts: ["10.0.3.10:5044"]
+  timeout: 15
+  slow_start: true
+
+processors:
+  - add_host_metadata:
+      when.not.contains.tags: forwarded
+  - add_fields:
+      target: ''
+      fields:
+        environment: dmz_lab
+
+logging.level: info
+logging.to_files: true
+logging.files:
+  path: /var/log/filebeat
+  name: filebeat
+  keepfiles: 3
