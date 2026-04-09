@@ -14,7 +14,6 @@ log_info "Configuring Siem Kibana"
 
 SIEM_KIBANA_CONTAINER="clab-${LAB_NAME}-kibana"
 
-
 log_info "Configuring Kibana network via nsenter..."
 
 KIBANA_PID=$(sudo docker inspect -f '{{.State.Pid}}' ${SIEM_KIBANA_CONTAINER})
@@ -29,14 +28,12 @@ echo "=== Kibana Network Configuration ==="
 sudo nsenter -t $KIBANA_PID -n ip addr show | grep "inet " || true
 sudo nsenter -t $KIBANA_PID -n ip route show || true
 
-
-# FIX: 로그 tail 파싱 대신 HTTP /api/status 엔드포인트로 Kibana 준비 상태 확인
-# (tail -n 200은 로그가 200줄 넘으면 감지 실패)
+# Kibana 컨테이너 내부 localhost:5601로 헬스체크 (네트워크 우회, 가장 확실)
 log_info "Waiting for Kibana to become available (HTTP health check)..."
 KIBANA_READY=false
 for i in $(seq 1 90); do
   if sudo docker exec "${SIEM_KIBANA_CONTAINER}" \
-      curl -sf "http://localhost:5601/api/status" >/dev/null 2>&1; then
+      curl -sf --max-time 3 "http://localhost:5601/api/status" >/dev/null 2>&1; then
     log_ok "Kibana is available (attempt $i)"
     KIBANA_READY=true
     break
@@ -49,36 +46,25 @@ done
 
 log_ok "Kibana configured"
 
-# Create Kibana Data Views
+# FIX: siem_pc(Alpine) wget 대신 Kibana 컨테이너 내부 curl 사용
+# Alpine BusyBox wget은 --header, --post-data 미지원 → 무한 대기 버그
 log_info "Creating Kibana Data Views..."
-KIBANA_URL="http://${SIEM_KIBANA_ETH2_IP%/*}:5601"
-SIEM_PC_CONTAINER="clab-${LAB_NAME}-siem_pc"
 
-# siem_pc에서 Kibana 접근 가능할 때까지 대기
-for i in $(seq 1 10); do
- if sudo docker exec ${SIEM_PC_CONTAINER} \
-     wget -qO- "${KIBANA_URL}/api/status" >/dev/null 2>&1 || \
-    sudo docker exec ${SIEM_PC_CONTAINER} \
-     wget -qO- "${KIBANA_URL}/api/status" 2>/dev/null | grep -q "version"; then
-   break
- fi
- sleep 5
-done
-
-# FIX: curl 응답 확인 추가 (실패시 경고 출력)
 create_data_view() {
   local name="$1"
   local payload="$2"
   local result
-  result=$(sudo docker exec ${SIEM_PC_CONTAINER} \
-    wget -qO- --header="kbn-xsrf: true" \
-    --header="Content-Type: application/json" \
-    --post-data="${payload}" \
-    "${KIBANA_URL}/api/data_views/data_view" 2>&1 || true)
+  result=$(sudo docker exec "${SIEM_KIBANA_CONTAINER}" \
+    curl -sf --max-time 10 \
+    -X POST "http://localhost:5601/api/data_views/data_view" \
+    -H "kbn-xsrf: true" \
+    -H "Content-Type: application/json" \
+    -d "${payload}" 2>&1 || true)
+
   if echo "$result" | grep -q '"id"'; then
     log_ok "  Data View created: ${name}"
   else
-    log_warn "  Data View '${name}' may have failed (already exists or Kibana not ready)"
+    log_warn "  Data View '${name}' skipped (already exists or error)"
   fi
 }
 
