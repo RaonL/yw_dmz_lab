@@ -83,9 +83,9 @@ if ! command -v filebeat &>/dev/null; then
   apt-get install -y filebeat 2>&1 | tail -5
 fi
 # Switch to iptables-nft
-echo "[3/7] Switching to iptables-nft..."
-update-alternatives --set iptables /usr/sbin/iptables-nft 2>/dev/null || true
-update-alternatives --set ip6tables /usr/sbin/ip6tables-nft 2>/dev/null || true
+echo "[3/7] Switching to iptables-legacy..."
+update-alternatives --set iptables /usr/sbin/iptables-legacy
+update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy
 echo "[OK] Using: \$(iptables --version)"
 
 # Configure network interfaces
