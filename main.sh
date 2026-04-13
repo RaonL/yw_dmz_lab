@@ -159,10 +159,23 @@ bash scripts/configure/siem/kibana.sh 2>/dev/null || log_warn "kibana.sh failed"
 # === Post-deploy ===
 log_info "Starting Filebeat..."
 sudo docker exec clab-${LAB_NAME}-External_FW bash -c '
- rm -rf /var/lib/filebeat/*
- /usr/share/filebeat/bin/filebeat -e -c /etc/filebeat/filebeat.yml \
- --path.home /usr/share/filebeat --path.data /var/lib/filebeat \
- --path.logs /var/log/filebeat > /tmp/fb.log 2>&1 &
+ set -e
+ mkdir -p /var/lib/filebeat /var/log/filebeat
+ if pgrep -x filebeat >/dev/null 2>&1; then
+   echo "filebeat already running"
+   exit 0
+ fi
+ FB_BIN="$(command -v filebeat || true)"
+ if [ -z "$FB_BIN" ] && [ -x /usr/share/filebeat/bin/filebeat ]; then
+   FB_BIN=/usr/share/filebeat/bin/filebeat
+ fi
+ if [ -z "$FB_BIN" ]; then
+   echo "filebeat binary not found"
+   exit 1
+ fi
+ nohup "$FB_BIN" -e -c /etc/filebeat/filebeat.yml \
+   --path.data /var/lib/filebeat \
+   --path.logs /var/log/filebeat > /var/log/filebeat/bootstrap.log 2>&1 &
 ' 2>/dev/null || log_warn "Filebeat start failed"
 
 log_info "Starting nginx in WAF..."
