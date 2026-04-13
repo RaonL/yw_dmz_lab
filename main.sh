@@ -145,6 +145,7 @@ bash scripts/configure/ids/ids-dmz.sh 2>/dev/null || log_warn "ids-dmz.sh failed
 log_info "Configuring network..."
 bash scripts/configure/network/router-edge.sh 2>/dev/null || log_warn "router-edge.sh failed"
 bash scripts/configure/network/router-internet.sh 2>/dev/null || log_warn "router-internet.sh failed"
+bash scripts/configure/network/attacker.sh 2>/dev/null || log_warn "attacker.sh failed"
 
 log_info "Configuring DMZ services..."
 bash scripts/configure/dmz/database.sh 2>/dev/null || log_warn "database.sh failed"
@@ -175,7 +176,7 @@ sudo docker exec clab-${LAB_NAME}-External_FW bash -c '
  fi
  nohup "$FB_BIN" -e -c /etc/filebeat/filebeat.yml \
    --path.data /var/lib/filebeat \
-   --path.logs /var/log/filebeat > /var/log/filebeat/bootstrap.log 2>&1 &
+   --path.logs /var/log/filebeat/bootstrap.log 2>&1 &
 ' 2>/dev/null || log_warn "Filebeat start failed"
 
 log_info "Starting nginx in WAF..."
@@ -188,9 +189,6 @@ sudo docker exec clab-${LAB_NAME}-SIEM_FW bash -c '
  iptables -I FORWARD 3 -p icmp -j ACCEPT
  iptables -I FORWARD 4 -m state --state ESTABLISHED,RELATED -j ACCEPT
 ' 2>/dev/null || true
-
-# FIX: kibana.sh에서 이미 Data View 생성하므로 중복 제거
-# (main.sh의 sleep 30 + curl 블록 삭제)
 
 log_section "yw_dmz_lab Deployment Complete!"
 log_ok "Services:"
