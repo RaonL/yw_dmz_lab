@@ -1,3 +1,4 @@
+
 name: yw-dmz
 
 mgmt:
@@ -14,25 +15,25 @@ topology:
 
     router-internet:
       kind: linux
-      image: frrouting/frr:latest
+      image: frrouting/frr:v8.4.1
       group: internet
 
     router-edge:
       kind: linux
-      image: frrouting/frr:latest
+      image: frrouting/frr:v8.4.1
       group: edge
 
     # === DMZ Zone ===
     External_FW:
       kind: linux
-      image: ubuntu:latest
+      image: ubuntu:24.04
       group: dmz
       cap-add:
         - NET_ADMIN
 
     DMZ_Switch:
       kind: linux
-      image: frrouting/frr:latest
+      image: frrouting/frr:v8.4.1
       group: dmz
 
     Proxy_WAF:
@@ -47,7 +48,7 @@ topology:
 
     Flask_Webserver:
       kind: linux
-      image: ubuntu:latest
+      image: ubuntu:24.04
       group: dmz
 
     Database:
@@ -62,9 +63,10 @@ topology:
 
     DMZ_IDS:
       kind: linux
-      image: jasonish/suricata:latest
+      image: jasonish/suricata:7.0.8
       group: dmz
       startup-delay: 15
+      cmd: tail -f /dev/null
       binds:
         - /home/clab/yw_dmz_lab/config/suricata/rules:/etc/suricata/rules:ro
       cap-add:
@@ -74,7 +76,7 @@ topology:
     # === SIEM Zone ===
     SIEM_FW:
       kind: linux
-      image: ubuntu:latest
+      image: ubuntu:24.04
       group: siem
       cap-add:
         - NET_ADMIN
@@ -83,13 +85,13 @@ topology:
       kind: linux
       image: docker.elastic.co/elasticsearch/elasticsearch:9.2.1
       group: siem
+      startup-delay: 15
       env:
         discovery.type: single-node
         ES_JAVA_OPTS: "-Xms512m -Xmx512m"
         xpack.security.enabled: "false"
       ports:
         - "9200:9200"
-      startup-delay: 15
       cap-add:
         - NET_ADMIN
 
@@ -112,11 +114,11 @@ topology:
       kind: linux
       image: docker.elastic.co/kibana/kibana:9.2.1
       group: siem
+      startup-delay: 20
       env:
         ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
       ports:
         - "5601:5601"
-      startup-delay: 20
       binds:
         - /home/clab/yw_dmz_lab/config/kibana/kibana.yml:/usr/share/kibana/config/kibana.yml:rw
       cap-add:
@@ -124,7 +126,7 @@ topology:
 
     siem_pc:
       kind: linux
-      image: alpine:latest
+      image: alpine:3.20.3
       group: siem
 
   links:
@@ -150,3 +152,4 @@ topology:
     - endpoints: ["SIEM_FW:eth9", "Proxy_WAF:eth3"]
     - endpoints: ["logstash:eth2", "elasticsearch:eth1"]
     - endpoints: ["elasticsearch:eth2", "kibana:eth1"]
+
