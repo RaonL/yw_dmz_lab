@@ -7,8 +7,8 @@ BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${BASE_DIR}/config/variables.sh"
 
 TOPO_DIR="${BASE_DIR}/topology"
-
-TOPO_FILE="${TOPO_DIR}/DMZ.yml"
+TOPO_BASENAME="${TOPO_FILE}"
+TOPO_FILE="${TOPO_DIR}/${TOPO_BASENAME}"
 
 cat > "$TOPO_FILE" << YAML
 
