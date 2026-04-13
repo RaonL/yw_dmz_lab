@@ -231,37 +231,37 @@ iptables -A FORWARD -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
 # ============================================
 
 # Per-IP rate limiting: max 20 new connections per minute
-iptables -A FORWARD -i eth2 -o eth1 -d "${DMZ_WAF_ETH1_IP%/*}" -p tcp --dport 8443 \
+iptables -A FORWARD -i eth2 -o eth1 -d "${DMZ_WAF_ETH1_IP%/*}" -p tcp --dport 8080 \
 	-m conntrack --ctstate NEW \
 	-m recent --name webserver_dos --set
 
-iptables -A FORWARD -i eth2 -o eth1 -d "${DMZ_WAF_ETH1_IP%/*}" -p tcp --dport 8443 \
+iptables -A FORWARD -i eth2 -o eth1 -d "${DMZ_WAF_ETH1_IP%/*}" -p tcp --dport 8080 \
 	-m conntrack --ctstate NEW \
 	-m recent --name webserver_dos --update --seconds 60 --hitcount 20 \
 	-j NFLOG --nflog-prefix "[EXT-FW-WEB-DOS-BLOCK] " --nflog-group 0
 
-iptables -A FORWARD -i eth2 -o eth1 -d "${DMZ_WAF_ETH1_IP%/*}" -p tcp --dport 8443 \
+iptables -A FORWARD -i eth2 -o eth1 -d "${DMZ_WAF_ETH1_IP%/*}" -p tcp --dport 8080 \
 	-m conntrack --ctstate NEW \
 	-m recent --name webserver_dos --update --seconds 60 --hitcount 20 \
 	-j DROP
 
 # Global rate limit: 50 connections/sec per source
-iptables -A FORWARD -i eth2 -o eth1 -d "${DMZ_WAF_ETH1_IP%/*}" -p tcp --dport 8443 \
+iptables -A FORWARD -i eth2 -o eth1 -d "${DMZ_WAF_ETH1_IP%/*}" -p tcp --dport 8080 \
 	-m conntrack --ctstate NEW \
 	-m limit --limit 50/sec --limit-burst 100 \
 	-j NFLOG --nflog-prefix "[EXT-FW-WEB-ACCEPT] " --nflog-group 0
 
-iptables -A FORWARD -i eth2 -o eth1 -d "${DMZ_WAF_ETH1_IP%/*}" -p tcp --dport 8443 \
+iptables -A FORWARD -i eth2 -o eth1 -d "${DMZ_WAF_ETH1_IP%/*}" -p tcp --dport 8080 \
 	-m conntrack --ctstate NEW \
 	-m limit --limit 50/sec --limit-burst 100 \
 	-j ACCEPT
 
 # Anything over limit gets dropped
-iptables -A FORWARD -i eth2 -o eth1 -d "${DMZ_WAF_ETH1_IP%/*}" -p tcp --dport 8443 \
+iptables -A FORWARD -i eth2 -o eth1 -d "${DMZ_WAF_ETH1_IP%/*}" -p tcp --dport 8080 \
 	-m limit --limit 1000/min --limit-burst 2000 \
 	-j NFLOG --nflog-prefix "[EXT-FW-WEB-RATELIMIT-DROP] " --nflog-group 0
 
-iptables -A FORWARD -i eth2 -o eth1 -d "${DMZ_WAF_ETH1_IP%/*}" -p tcp --dport 8443 -j DROP
+iptables -A FORWARD -i eth2 -o eth1 -d "${DMZ_WAF_ETH1_IP%/*}" -p tcp --dport 8080 -j DROP
 
 # ============================================
 # Internet → Webserver (ICMP) with rate limiting
@@ -341,7 +341,7 @@ iptables -A FORWARD -j DROP
 iptables -t nat -A PREROUTING -i eth2 -d "${EXT_FW_NAT_IP}" -p icmp --icmp-type echo-request -j DNAT --to-destination ${DMZ_WAF_ETH1_IP%/*}
 
 # HTTPS DNAT
-iptables -t nat -A PREROUTING -i eth2 -d "${EXT_FW_NAT_IP}" -p tcp --dport 8443 -j DNAT --to-destination ${DMZ_WAF_ETH1_IP%/*}:8080
+iptables -t nat -A PREROUTING -i eth2 -d "${EXT_FW_NAT_IP}" -p tcp --dport 8080 -j DNAT --to-destination ${DMZ_WAF_ETH1_IP%/*}:8080
 
 # SNAT for responses
 iptables -t nat -A POSTROUTING -o eth2 -s "${DMZ_WAF_ETH1_IP%/*}" -j SNAT --to-source ${EXT_FW_NAT_IP}
