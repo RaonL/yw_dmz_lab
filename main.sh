@@ -85,6 +85,11 @@ cd topology && sudo containerlab deploy --topo DMZ.yml && cd ..
 log_info "Verifying containers..."
 RUNNING=$(docker ps --filter "name=clab-${LAB_NAME}" --format "{{.Names}}" | wc -l)
 log_info "Running containers: $RUNNING"
+EXPECTED_CONTAINERS=12
+if [ "$RUNNING" -lt "$EXPECTED_CONTAINERS" ]; then
+ log_error "Container count check failed (${RUNNING}/${EXPECTED_CONTAINERS}). Deployment may be broken. Aborting."
+ exit 1
+fi
 
 if [ "$TOPOLOGY_ONLY" = true ]; then
  log_ok "Topology-only deployment complete!"
