@@ -156,14 +156,15 @@ fi
 # Configure Filebeat
 cat > /etc/filebeat/filebeat.yml << 'FILEBEAT_CONFIG'
 filebeat.inputs:
-- type: log
-  enabled: true
-  paths:
-    - /var/log/firewall/firewall-events.log
-  fields:
-    firewall: external
-    log_type: firewall
-  fields_under_root: true
+  - type: filestream
+    id: external-fw-firewall-events
+    enabled: true
+    paths:
+      - /var/log/firewall/firewall-events.log
+    fields:
+      firewall: external
+      log_type: firewall
+    fields_under_root: true
 
 output.logstash:
   hosts: ["10.0.3.10:5044"]
@@ -173,7 +174,13 @@ logging.level: info
 FILEBEAT_CONFIG
 
 # Start Filebeat
-nohup filebeat -e -c /etc/filebeat/filebeat.yml > /var/log/filebeat.log 2>&1 &
+pkill -x filebeat 2>/dev/null || true
+sleep 1
+FILEBEAT_BIN="$(command -v filebeat || true)"
+if [ -z "${FILEBEAT_BIN}" ] && [ -x /usr/share/filebeat/bin/filebeat ]; then
+  FILEBEAT_BIN="/usr/share/filebeat/bin/filebeat"
+fi
+nohup "${FILEBEAT_BIN:-filebeat}" -e -c /etc/filebeat/filebeat.yml > /var/log/filebeat.log 2>&1 &
 FILEBEAT_PID=\$!
 sleep 2
 
