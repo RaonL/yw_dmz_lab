@@ -9,6 +9,7 @@ TARGET_URL="http://${EXT_FW_NAT_IP}:8443/"
 LOGSTASH_TCP_HOST="${SIEM_LOGSTASH_ETH1_IP%/*}"
 LOGSTASH_TCP_PORT="5000"
 
+
 echo "=== SQL Injection Test against WAF (from Attacker container) ==="
 echo "Target: ${TARGET_URL}"
 echo "Logstash TCP: ${LOGSTASH_TCP_HOST}:${LOGSTASH_TCP_PORT}"
@@ -26,9 +27,14 @@ send_attack_log() {
     -e LS_PORT="${LOGSTASH_TCP_PORT}" \
     -e ATTACK_TYPE="${attack_type}" \
     -e HTTP_CODE="${http_code}" \
-    "${ATTACKER_CONTAINER}" bash -lc \
-    'printf "{\"log_type\":\"attack\",\"attack_type\":\"%s\",\"http_code\":\"%s\",\"source\":\"attacker\"}\n" "${ATTACK_TYPE}" "${HTTP_CODE}" > /dev/tcp/${LS_HOST}/${LS_PORT}' \
-    >/dev/null 2>&1 || true
+    "${ATTACKER_CONTAINER}" sh -lc '
+      MSG=$(printf "{\"log_type\":\"attack\",\"attack_type\":\"%s\",\"http_code\":\"%s\",\"source\":\"attacker\"}\n" "$ATTACK_TYPE" "$HTTP_CODE")
+      if command -v timeout >/dev/null 2>&1; then
+        timeout 2 sh -lc "printf %s \"$MSG\" | nc -w 1 \"$LS_HOST\" \"$LS_PORT\"" >/dev/null 2>&1 || true
+      else
+        printf %s "$MSG" | nc -w 1 "$LS_HOST" "$LS_PORT" >/dev/null 2>&1 || true
+      fi
+    ' >/dev/null 2>&1 || true
 }
 
 for payload in "' OR '1'='1" "' OR 1=1--" "admin'--" "' UNION SELECT * FROM users--"; do
@@ -37,7 +43,7 @@ for payload in "' OR '1'='1" "' OR 1=1--" "admin'--" "' UNION SELECT * FROM user
     -e ATTACK_URL="${TARGET_URL}" \
     -e ATTACK_PAYLOAD="${payload}" \
     "${ATTACKER_CONTAINER}" sh -lc \
-    'curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 --max-time 5 -X POST "${ATTACK_URL}" -d "username=${ATTACK_PAYLOAD}&password=test"' \
+    'curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 --max-time 5 -X POST "$ATTACK_URL" --data-urlencode "username=$ATTACK_PAYLOAD" --data-urlencode "password=test"' \
     2>/dev/null || echo "000")
   echo "HTTP $CODE"
   send_attack_log "sql_injection" "$CODE"
