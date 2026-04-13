@@ -9,7 +9,6 @@ TARGET_URL="http://${EXT_FW_NAT_IP}:8443/"
 LOGSTASH_TCP_HOST="${SIEM_LOGSTASH_ETH1_IP%/*}"
 LOGSTASH_TCP_PORT="5000"
 
-
 echo "=== SQL Injection Test against WAF (from Attacker container) ==="
 echo "Target: ${TARGET_URL}"
 echo "Logstash TCP: ${LOGSTASH_TCP_HOST}:${LOGSTASH_TCP_PORT}"
@@ -18,6 +17,18 @@ if ! docker ps --format '{{.Names}}' | grep -qx "${ATTACKER_CONTAINER}"; then
   echo "[ERROR] Attacker container not running: ${ATTACKER_CONTAINER}"
   exit 1
 fi
+
+# Self-heal attacker networking so scripts work even without re-running full deployment
+docker exec \
+  -e INTERNET_ATTACKER_ETH1_IP="${INTERNET_ATTACKER_ETH1_IP}" \
+  -e ROUTER_INTERNET_ETH1_IP="${ROUTER_INTERNET_ETH1_IP}" \
+  -e EXT_FW_NAT_IP="${EXT_FW_NAT_IP}" \
+  "${ATTACKER_CONTAINER}" sh -lc '
+    ip addr add "${INTERNET_ATTACKER_ETH1_IP}" dev eth1 2>/dev/null || true
+    ip link set eth1 up
+    ip route replace default via "${ROUTER_INTERNET_ETH1_IP%/*}" dev eth1
+    ip route replace "${EXT_FW_NAT_IP}" via "${ROUTER_INTERNET_ETH1_IP%/*}" dev eth1
+  ' >/dev/null 2>&1 || true
 
 send_attack_log() {
   local attack_type="$1"
