@@ -26,9 +26,14 @@ send_attack_log() {
     -e LS_PORT="${LOGSTASH_TCP_PORT}" \
     -e ATTACK_TYPE="${attack_type}" \
     -e HTTP_CODE="${http_code}" \
-    "${ATTACKER_CONTAINER}" bash -lc \
-    'printf "{\"log_type\":\"attack\",\"attack_type\":\"%s\",\"http_code\":\"%s\",\"source\":\"attacker\"}\n" "${ATTACK_TYPE}" "${HTTP_CODE}" > /dev/tcp/${LS_HOST}/${LS_PORT}' \
-    >/dev/null 2>&1 || true
+    "${ATTACKER_CONTAINER}" sh -lc '
+      MSG=$(printf "{\"log_type\":\"attack\",\"attack_type\":\"%s\",\"http_code\":\"%s\",\"source\":\"attacker\"}\n" "$ATTACK_TYPE" "$HTTP_CODE")
+      if command -v timeout >/dev/null 2>&1; then
+        timeout 2 sh -lc "printf %s \"$MSG\" | nc -w 1 \"$LS_HOST\" \"$LS_PORT\"" >/dev/null 2>&1 || true
+      else
+        printf %s "$MSG" | nc -w 1 "$LS_HOST" "$LS_PORT" >/dev/null 2>&1 || true
+      fi
+    ' >/dev/null 2>&1 || true
 }
 
 for path in "../../../../etc/passwd" "../../../etc/shadow" "....//....//etc/passwd"; do
@@ -36,7 +41,7 @@ for path in "../../../../etc/passwd" "../../../etc/shadow" "....//....//etc/pass
   CODE=$(docker exec \
     -e ATTACK_URL="${TARGET_BASE_URL}/${path}" \
     "${ATTACKER_CONTAINER}" sh -lc \
-    'curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 --max-time 5 "${ATTACK_URL}"' \
+    'curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 --max-time 5 "$ATTACK_URL"' \
     2>/dev/null || echo "000")
   echo "HTTP $CODE"
   send_attack_log "path_traversal" "$CODE"
