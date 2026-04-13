@@ -53,20 +53,27 @@ sudo docker exec -u 0 ${LOGSTASH_CONTAINER} bash -c '
 # --- Step 4: Start Logstash ---
 log_info "Starting Logstash..."
 if sudo docker exec ${LOGSTASH_CONTAINER} ps aux 2>/dev/null | grep -q "[j]ava.*logstash"; then
-    log_info "Already running"
+    log_info "Logstash already running -> restarting to apply latest pipeline..."
+    sudo docker exec ${LOGSTASH_CONTAINER} pkill -f "/usr/share/logstash/bin/logstash" 2>/dev/null || true
+    for _ in $(seq 1 20); do
+        if ! sudo docker exec ${LOGSTASH_CONTAINER} ps aux 2>/dev/null | grep -q "[j]ava.*logstash"; then
+            break
+        fi
+        sleep 1
+    done
+fi
+
+sudo docker exec -d -u logstash ${LOGSTASH_CONTAINER} /usr/share/logstash/bin/logstash \
+    --path.config /usr/share/logstash/pipeline \
+    --path.settings /usr/share/logstash/config \
+    --path.data /usr/share/logstash/data \
+    --path.logs /usr/share/logstash/logs
+log_info "Waiting 90s for Logstash JVM..."
+sleep 90
+if sudo docker exec ${LOGSTASH_CONTAINER} ps aux 2>/dev/null | grep -q "[j]ava.*logstash"; then
+    log_ok "Logstash is running"
 else
-    sudo docker exec -d -u logstash ${LOGSTASH_CONTAINER} /usr/share/logstash/bin/logstash \
-        --path.config /usr/share/logstash/pipeline \
-        --path.settings /usr/share/logstash/config \
-        --path.data /usr/share/logstash/data \
-        --path.logs /usr/share/logstash/logs
-    log_info "Waiting 90s for Logstash JVM..."
-    sleep 90
-    if sudo docker exec ${LOGSTASH_CONTAINER} ps aux 2>/dev/null | grep -q "[j]ava.*logstash"; then
-        log_ok "Logstash is running"
-    else
-        log_warn "Logstash may not have started"
-    fi
+    log_warn "Logstash may not have started"
 fi
 
 log_ok "Logstash configured"
