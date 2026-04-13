@@ -5,17 +5,32 @@ export LAB_NAME="yw-dmz"
 export TOPO_FILE="DMZ.yml"
 
 # === Docker Images ===
-export IMG_ALPINE="alpine:latest"
-export IMG_UBUNTU="ubuntu:latest"
-export IMG_FRR="frrouting/frr:latest"
-export IMG_NGINX="nginx:latest"
+export IMG_ALPINE="alpine:3.20.3"
+export IMG_UBUNTU="ubuntu:24.04"
+export IMG_FRR="frrouting/frr:v10.2.1"
+export IMG_NGINX="nginx:1.27.5"
 export IMG_POSTGRES="postgres:16"
-export IMG_SURICATA="jasonish/suricata:latest"
+export IMG_SURICATA="jasonish/suricata:7.0.8"
 export IMG_KALI="kalilinux/kali-rolling"
 export IMG_MODSEC="owasp/modsecurity-crs:nginx"
 export IMG_ELASTIC="docker.elastic.co/elasticsearch/elasticsearch:9.2.1"
 export IMG_LOGSTASH="docker.elastic.co/logstash/logstash:9.2.1"
 export IMG_KIBANA="docker.elastic.co/kibana/kibana:9.2.1"
+
+# 이미지 관련 반복 작업(로그 출력/정리)에서 공통으로 사용하는 변수 목록
+IMAGE_VAR_NAMES=(
+  IMG_ALPINE
+  IMG_UBUNTU
+  IMG_FRR
+  IMG_NGINX
+  IMG_POSTGRES
+  IMG_SURICATA
+  IMG_KALI
+  IMG_MODSEC
+  IMG_ELASTIC
+  IMG_LOGSTASH
+  IMG_KIBANA
+)
 
 # === Network Subnets ===
 export INTERNET_SUBNET="200.168.1.0/24"
