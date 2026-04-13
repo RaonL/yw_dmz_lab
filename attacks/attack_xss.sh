@@ -46,18 +46,14 @@ prepare_attacker() {
 send_attack_log() {
   local attack_type="$1"
   local http_code="$2"
-  docker exec \
+  timeout 5 docker exec \
     -e LS_HOST="${LOGSTASH_TCP_HOST}" \
     -e LS_PORT="${LOGSTASH_TCP_PORT}" \
     -e ATTACK_TYPE="${attack_type}" \
     -e HTTP_CODE="${http_code}" \
     "${ATTACKER_CONTAINER}" sh -lc '
       MSG=$(printf "{\"log_type\":\"attack\",\"attack_type\":\"%s\",\"http_code\":\"%s\",\"source\":\"attacker\"}\n" "$ATTACK_TYPE" "$HTTP_CODE")
-      if command -v timeout >/dev/null 2>&1; then
-        timeout 2 sh -lc "printf %s \"$MSG\" | nc -w 1 \"$LS_HOST\" \"$LS_PORT\"" >/dev/null 2>&1 || true
-      else
-        printf %s "$MSG" | nc -w 1 "$LS_HOST" "$LS_PORT" >/dev/null 2>&1 || true
-      fi
+      timeout 2 sh -c "printf %s \"$MSG\" | nc -w 1 \"$LS_HOST\" \"$LS_PORT\"" >/dev/null 2>&1 || true
     ' >/dev/null 2>&1 || true
 }
 
@@ -69,12 +65,10 @@ for payload in "<script>alert(1)</script>" "<img src=x onerror=alert(1)>" "<svg/
     -e ATTACK_URL="${TARGET_URL}" \
     -e ATTACK_PAYLOAD="${payload}" \
     "${ATTACKER_CONTAINER}" sh -lc '
-      if command -v curl >/dev/null 2>&1; then
-        curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 --max-time 5 -X POST "$ATTACK_URL" --data-urlencode "username=$ATTACK_PAYLOAD" --data-urlencode "password=test"
-      else
-        echo 000
-      fi
-    ' 2>/dev/null || echo "000")
+      result=$(curl -s -o /dev/null -w "%{http_code}" --connect-timeout 5 --max-time 10 -X POST "$ATTACK_URL" --data-urlencode "username=$ATTACK_PAYLOAD" --data-urlencode "password=test" 2>/dev/null) || true
+      echo "${result:-000}"
+    ' 2>/dev/null)
+  CODE=${CODE:-000}
   echo "HTTP $CODE"
   send_attack_log "xss" "$CODE"
   sleep 1
