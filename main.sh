@@ -50,9 +50,8 @@ if [ "$DESTROY_MODE" = true ] || [ "$PURGE_MODE" = true ]; then
  docker network prune -f 2>/dev/null || true
  if [ "$PURGE_MODE" = true ]; then
  log_info "Removing Docker images..."
- for img in $IMG_ALPINE $IMG_UBUNTU $IMG_FRR $IMG_NGINX $IMG_POSTGRES \
- $IMG_SURICATA $IMG_KALI $IMG_MODSEC $IMG_ELASTIC $IMG_LOGSTASH $IMG_KIBANA; do
- docker rmi "$img" 2>/dev/null || true
+ for img_var in "${IMAGE_VAR_NAMES[@]}"; do
+ docker rmi "${!img_var}" 2>/dev/null || true
  done
  fi
  log_ok "Cleanup complete"
@@ -61,6 +60,11 @@ fi
 
 # === Main Deployment ===
 log_section "Starting yw_dmz_lab Deployment"
+
+log_info "Pinned container images:"
+for img_var in "${IMAGE_VAR_NAMES[@]}"; do
+ log_info " ${img_var}=${!img_var}"
+done
 
 if [ "$SKIP_CLEANUP" = false ]; then
  log_info "Cleaning up previous environment..."
