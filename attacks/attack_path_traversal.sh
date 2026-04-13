@@ -5,7 +5,7 @@ BASE_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 source "${BASE_DIR}/config/variables.sh"
 
 ATTACKER_CONTAINER="clab-${LAB_NAME}-Attacker"
-TARGET_BASE_URL="http://${EXT_FW_NAT_IP}:8443"
+TARGET_BASE_URL="http://${EXT_FW_NAT_IP}:8080"
 LOGSTASH_TCP_HOST="${SIEM_LOGSTASH_ETH1_IP%/*}"
 LOGSTASH_TCP_PORT="5000"
 
