@@ -148,9 +148,11 @@ bash scripts/configure/network/router-internet.sh 2>/dev/null || log_warn "route
 bash scripts/configure/network/attacker.sh 2>/dev/null || log_warn "attacker.sh failed"
 
 log_info "Configuring DMZ services..."
+bash scripts/configure/dmz/dmz-switch.sh 2>/dev/null || log_warn "dmz-switch.sh failed"
 bash scripts/configure/dmz/database.sh 2>/dev/null || log_warn "database.sh failed"
 bash scripts/configure/dmz/webserver.sh 2>/dev/null || log_warn "webserver.sh failed"
 bash scripts/configure/dmz/proxy.sh 2>/dev/null || log_warn "proxy.sh failed"
+
 
 log_info "Configuring SIEM stack..."
 bash scripts/configure/siem/logstash.sh
