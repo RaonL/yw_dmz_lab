@@ -72,8 +72,8 @@ outputs:
 
 default-log-dir: /var/log/suricata/
 rule-files:
-  - suricata.rules
-default-rule-path: /var/lib/suricata/rules
+  - local.rules
+default-rule-path: /etc/suricata/rules
 
 logging:
   default-log-level: notice
