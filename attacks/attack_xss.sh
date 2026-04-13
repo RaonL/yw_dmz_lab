@@ -18,17 +18,30 @@ if ! docker ps --format '{{.Names}}' | grep -qx "${ATTACKER_CONTAINER}"; then
   exit 1
 fi
 
-# Self-heal attacker networking so scripts work even without re-running full deployment
-docker exec \
-  -e INTERNET_ATTACKER_ETH1_IP="${INTERNET_ATTACKER_ETH1_IP}" \
-  -e ROUTER_INTERNET_ETH1_IP="${ROUTER_INTERNET_ETH1_IP}" \
-  -e EXT_FW_NAT_IP="${EXT_FW_NAT_IP}" \
-  "${ATTACKER_CONTAINER}" sh -lc '
-    ip addr add "${INTERNET_ATTACKER_ETH1_IP}" dev eth1 2>/dev/null || true
-    ip link set eth1 up
-    ip route replace default via "${ROUTER_INTERNET_ETH1_IP%/*}" dev eth1
-    ip route replace "${EXT_FW_NAT_IP}" via "${ROUTER_INTERNET_ETH1_IP%/*}" dev eth1
-  ' >/dev/null 2>&1 || true
+prepare_attacker() {
+  docker exec -i \
+    -e INTERNET_ATTACKER_ETH1_IP="${INTERNET_ATTACKER_ETH1_IP}" \
+    -e ROUTER_INTERNET_ETH1_IP="${ROUTER_INTERNET_ETH1_IP}" \
+    -e EXT_FW_NAT_IP="${EXT_FW_NAT_IP}" \
+    "${ATTACKER_CONTAINER}" sh -lc '
+      set -e
+      if ! command -v ip >/dev/null 2>&1; then
+        if command -v apt-get >/dev/null 2>&1; then
+          apt-get update -qq >/dev/null 2>&1 || true
+          apt-get install -y iproute2 curl netcat-openbsd >/dev/null 2>&1 || true
+        elif command -v apk >/dev/null 2>&1; then
+          apk add --no-cache iproute2 curl netcat-openbsd >/dev/null 2>&1 || true
+        fi
+      fi
+
+      if command -v ip >/dev/null 2>&1; then
+        ip addr add "${INTERNET_ATTACKER_ETH1_IP}" dev eth1 2>/dev/null || true
+        ip link set eth1 up || true
+        ip route replace default via "${ROUTER_INTERNET_ETH1_IP%/*}" dev eth1 || true
+        ip route replace "${EXT_FW_NAT_IP}" via "${ROUTER_INTERNET_ETH1_IP%/*}" dev eth1 || true
+      fi
+    ' >/dev/null 2>&1 || true
+}
 
 send_attack_log() {
   local attack_type="$1"
@@ -48,14 +61,20 @@ send_attack_log() {
     ' >/dev/null 2>&1 || true
 }
 
+prepare_attacker
+
 for payload in "<script>alert(1)</script>" "<img src=x onerror=alert(1)>" "<svg/onload=alert(1)>"; do
   echo -n "Payload: $payload → "
   CODE=$(docker exec \
     -e ATTACK_URL="${TARGET_URL}" \
     -e ATTACK_PAYLOAD="${payload}" \
-    "${ATTACKER_CONTAINER}" sh -lc \
-    'curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 --max-time 5 -X POST "$ATTACK_URL" --data-urlencode "username=$ATTACK_PAYLOAD" --data-urlencode "password=test"' \
-    2>/dev/null || echo "000")
+    "${ATTACKER_CONTAINER}" sh -lc '
+      if command -v curl >/dev/null 2>&1; then
+        curl -s -o /dev/null -w "%{http_code}" --connect-timeout 3 --max-time 5 -X POST "$ATTACK_URL" --data-urlencode "username=$ATTACK_PAYLOAD" --data-urlencode "password=test"
+      else
+        echo 000
+      fi
+    ' 2>/dev/null || echo "000")
   echo "HTTP $CODE"
   send_attack_log "xss" "$CODE"
   sleep 1
