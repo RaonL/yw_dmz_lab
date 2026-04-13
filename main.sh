@@ -85,9 +85,24 @@ cd topology && sudo containerlab deploy --topo DMZ.yml && cd ..
 log_info "Verifying containers..."
 RUNNING=$(docker ps --filter "name=clab-${LAB_NAME}" --format "{{.Names}}" | wc -l)
 log_info "Running containers: $RUNNING"
-EXPECTED_CONTAINERS=12
-if [ "$RUNNING" -lt "$EXPECTED_CONTAINERS" ]; then
+EXPECTED_CONTAINERS=14
+if [ "$RUNNING" -ne "$EXPECTED_CONTAINERS" ]; then
  log_error "Container count check failed (${RUNNING}/${EXPECTED_CONTAINERS}). Deployment may be broken. Aborting."
+ exit 1
+fi
+
+NON_RUNNING=$(docker ps -a \
+ --filter "name=^clab-${LAB_NAME}-" \
+ --filter "status=created" \
+ --filter "status=restarting" \
+ --filter "status=exited" \
+ --filter "status=dead" \
+ --format "{{.Names}} -> {{.Status}}")
+if [ -n "$NON_RUNNING" ]; then
+ log_error "Detected non-running lab containers:"
+ while IFS= read -r line; do
+   [ -n "$line" ] && log_error " ${line}"
+ done <<< "$NON_RUNNING"
  exit 1
 fi
 
@@ -119,27 +134,27 @@ if [ "$ES_READY" = false ]; then
 fi
 
 log_info "Configuring External Firewall..."
-bash scripts/configure/firewalls/external-fw.sh 2>/dev/null || log_warn "external-fw.sh not found"
+bash scripts/configure/firewalls/external-fw.sh 2>/dev/null || log_warn "external-fw.sh failed"
 
 log_info "Configuring SIEM Firewall..."
-bash scripts/configure/firewalls/siem-fw.sh 2>/dev/null || log_warn "siem-fw.sh not found"
+bash scripts/configure/firewalls/siem-fw.sh 2>/dev/null || log_warn "siem-fw.sh failed"
 
 log_info "Configuring DMZ IDS..."
-bash scripts/configure/ids/ids-dmz.sh 2>/dev/null || log_warn "ids-dmz.sh not found"
+bash scripts/configure/ids/ids-dmz.sh 2>/dev/null || log_warn "ids-dmz.sh failed"
 
 log_info "Configuring network..."
-bash scripts/configure/network/router-edge.sh 2>/dev/null || log_warn "router-edge.sh not found"
-bash scripts/configure/network/router-internet.sh 2>/dev/null || log_warn "router-internet.sh not found"
+bash scripts/configure/network/router-edge.sh 2>/dev/null || log_warn "router-edge.sh failed"
+bash scripts/configure/network/router-internet.sh 2>/dev/null || log_warn "router-internet.sh failed"
 
 log_info "Configuring DMZ services..."
-bash scripts/configure/dmz/database.sh 2>/dev/null || log_warn "database.sh not found"
-bash scripts/configure/dmz/webserver.sh 2>/dev/null || log_warn "webserver.sh not found"
-bash scripts/configure/dmz/proxy.sh 2>/dev/null || log_warn "proxy.sh not found"
+bash scripts/configure/dmz/database.sh 2>/dev/null || log_warn "database.sh failed"
+bash scripts/configure/dmz/webserver.sh 2>/dev/null || log_warn "webserver.sh failed"
+bash scripts/configure/dmz/proxy.sh 2>/dev/null || log_warn "proxy.sh failed"
 
 log_info "Configuring SIEM stack..."
 bash scripts/configure/siem/logstash.sh
-bash scripts/configure/siem/elasticsearch.sh 2>/dev/null || log_warn "elasticsearch.sh not found"
-bash scripts/configure/siem/kibana.sh 2>/dev/null || log_warn "kibana.sh not found"
+bash scripts/configure/siem/elasticsearch.sh 2>/dev/null || log_warn "elasticsearch.sh failed"
+bash scripts/configure/siem/kibana.sh 2>/dev/null || log_warn "kibana.sh failed"
 
 # === Post-deploy ===
 log_info "Starting Filebeat..."
