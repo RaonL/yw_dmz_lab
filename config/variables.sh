@@ -1,3 +1,6 @@
+
+
+### 2) `config/variables.sh`
 #!/bin/bash
 # yw_dmz_lab - Central Variables
 
