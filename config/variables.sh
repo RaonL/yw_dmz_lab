@@ -7,7 +7,7 @@ export TOPO_FILE="DMZ.yml"
 # === Docker Images ===
 export IMG_ALPINE="alpine:3.20.3"
 export IMG_UBUNTU="ubuntu:24.04"
-export IMG_FRR="frrouting/frr:v10.2.1"
+export IMG_FRR="frrouting/frr:v8.4.1"
 export IMG_NGINX="nginx:1.27.5"
 export IMG_POSTGRES="postgres:16"
 export IMG_SURICATA="jasonish/suricata:7.0.8"
