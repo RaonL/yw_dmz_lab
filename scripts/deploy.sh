@@ -16,6 +16,7 @@ done
 log_info "[1/7] Configuring Network..."
 bash "${BASE_DIR}/scripts/configure/network/router-edge.sh"
 bash "${BASE_DIR}/scripts/configure/network/router-internet.sh"
+bash "${BASE_DIR}/scripts/configure/network/attacker.sh"
 
 # 2. Firewalls
 log_info "[2/7] Configuring Firewalls..."
