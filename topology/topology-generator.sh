@@ -79,6 +79,7 @@ topology:
       image: ${IMG_SURICATA}
       group: dmz
       startup-delay: 15
+      cmd: tail -f /dev/null
       binds:
         - ${BASE_DIR}/config/suricata/rules:/etc/suricata/rules:ro
       cap-add:
