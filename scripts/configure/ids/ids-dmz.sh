@@ -40,9 +40,43 @@ while [ "$WAIT" -lt 30 ]; do
     sleep 1
 done
 
+# -----------------------------------------------------------------------------
+# DMZ_IDS eth2 — SIEM link. Needed for Filebeat -> Logstash:5045
+# -----------------------------------------------------------------------------
+log_info "Configuring DMZ_IDS eth2 (SIEM link) + route..."
+sudo docker exec -i \
+    -e DMZ_IDS_ETH2_IP="${DMZ_IDS_ETH2_IP}" \
+    -e SIEM_FW_ETH7_IP="${SIEM_FW_ETH7_IP}" \
+    -e SIEM_SUBNET="${SIEM_SUBNET}" \
+    "${DMZ_IDS_CONTAINER}" sh << 'EOF'
+set -e
+
+if ! command -v ip >/dev/null 2>&1; then
+  if command -v apt-get >/dev/null 2>&1; then
+    export DEBIAN_FRONTEND=noninteractive
+    apt-get update -qq >/dev/null 2>&1 || true
+    apt-get install -y --no-install-recommends iproute2 iputils-ping netcat-openbsd >/dev/null 2>&1 || true
+  elif command -v apk >/dev/null 2>&1; then
+    apk add --no-cache iproute2 iputils busybox-extras >/dev/null 2>&1 || true
+  fi
+fi
+
+ip addr add "${DMZ_IDS_ETH2_IP}" dev eth2 2>/dev/null || true
+ip link set eth2 up 2>/dev/null || true
+
+# Route SIEM subnet via SIEM_FW eth7 gateway
+ip route replace "${SIEM_SUBNET}" via "${SIEM_FW_ETH7_IP%/*}" dev eth2 2>/dev/null || true
+
+echo "--- eth2 addr ---"
+ip -4 addr show eth2 || true
+echo "--- routes ---"
+ip -4 route || true
+EOF
+log_ok "DMZ_IDS eth2 + route configured"
+
 log_info "Generating Suricata configuration..."
 sudo docker exec -i "${DMZ_IDS_CONTAINER}" bash << 'INNER_CONF'
-mkdir -p /etc/suricata /var/log/suricata
+mkdir -p /etc/suricata /var/log/suricata /etc/suricata/rules
 
 cat > /etc/suricata/suricata.yaml << 'YAML'
 %YAML 1.1
@@ -125,6 +159,8 @@ logging:
         filename: /var/log/suricata/suricata.log
 YAML
 
+touch /etc/suricata/rules/local.rules
+
 echo "[OK] Suricata config written"
 INNER_CONF
 
@@ -135,12 +171,12 @@ log_info "Starting Suricata..."
 sudo docker exec "${DMZ_IDS_CONTAINER}" pkill -x suricata 2>/dev/null || true
 sleep 2
 sudo docker exec -d "${DMZ_IDS_CONTAINER}" bash -c '
+  mkdir -p /var/log/suricata
   : > /var/log/suricata/eve.json
   suricata -c /etc/suricata/suricata.yaml -i eth1 --runmode=autofp -D \
     > /var/log/suricata/startup.log 2>&1
 '
 
-# "Engine started" 로그를 근거로 판단 (pgrep은 fork 타이밍 민감)
 log_info "Waiting up to 20s for Suricata engine to come up..."
 ENGINE_UP=0
 for i in $(seq 1 20); do
@@ -230,7 +266,7 @@ if [ -x "${FB_BIN}" ] || command -v filebeat >/dev/null 2>&1; then
       > /var/log/filebeat.log 2>&1 &
     sleep 2
     if pgrep -f "filebeat.*filebeat.yml" >/dev/null 2>&1; then
-        echo "[OK] Filebeat started (shipping eve.json → ${LS_HOST}:5045)"
+        echo "[OK] Filebeat started (shipping eve.json -> ${LS_HOST}:5045)"
     else
         echo "[WARN] Filebeat not running — tail /var/log/filebeat.log:"
         tail -n 20 /var/log/filebeat.log 2>/dev/null || true
