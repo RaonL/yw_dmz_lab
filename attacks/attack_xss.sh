@@ -23,25 +23,33 @@ prepare_attacker() {
     -e INTERNET_ATTACKER_ETH1_IP="${INTERNET_ATTACKER_ETH1_IP}" \
     -e ROUTER_INTERNET_ETH1_IP="${ROUTER_INTERNET_ETH1_IP}" \
     -e EXT_FW_NAT_IP="${EXT_FW_NAT_IP}" \
-    "${ATTACKER_CONTAINER}" sh -lc '
+    "${ATTACKER_CONTAINER}" bash -c '
       set -e
-      if ! command -v ip >/dev/null 2>&1; then
+      # DNS first (required for apt)
+      grep -q nameserver /etc/resolv.conf 2>/dev/null || echo "nameserver 8.8.8.8" > /etc/resolv.conf
+
+      # Install tools (fail LOUDLY this time)
+      if ! command -v ip >/dev/null 2>&1 || ! command -v curl >/dev/null 2>&1; then
         if command -v apt-get >/dev/null 2>&1; then
-          apt-get update -qq >/dev/null 2>&1 || true
-          apt-get install -y iproute2 curl netcat-openbsd >/dev/null 2>&1 || true
+          export DEBIAN_FRONTEND=noninteractive
+          apt-get update -qq
+          apt-get install -y --no-install-recommends iproute2 iputils-ping curl netcat-openbsd
         elif command -v apk >/dev/null 2>&1; then
-          apk add --no-cache iproute2 curl netcat-openbsd >/dev/null 2>&1 || true
+          apk add --no-cache iproute2 iputils curl netcat-openbsd
         fi
       fi
 
-      if command -v ip >/dev/null 2>&1; then
-        ip addr add "${INTERNET_ATTACKER_ETH1_IP}" dev eth1 2>/dev/null || true
-        ip link set eth1 up || true
-        ip route replace default via "${ROUTER_INTERNET_ETH1_IP%/*}" dev eth1 || true
-        ip route replace "${EXT_FW_NAT_IP}" via "${ROUTER_INTERNET_ETH1_IP%/*}" dev eth1 || true
-      fi
-    ' >/dev/null 2>&1 || true
+      # Network setup
+      ip addr add "${INTERNET_ATTACKER_ETH1_IP}" dev eth1 2>/dev/null || true
+      ip link set eth1 up
+      ip route replace default via "${ROUTER_INTERNET_ETH1_IP%/*}" dev eth1
+      ip route replace "${EXT_FW_NAT_IP}" via "${ROUTER_INTERNET_ETH1_IP%/*}" dev eth1
+
+      # Sanity
+      ip -4 addr show eth1 | head -3
+    '
 }
+
 
 send_attack_log() {
   local attack_type="$1"
