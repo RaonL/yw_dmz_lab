@@ -48,9 +48,20 @@ log_ok "Elasticsearch registered as $ES_IP"
 sudo docker exec -u 0 ${LOGSTASH_CONTAINER} bash -c '
     mkdir -p /usr/share/logstash/data /usr/share/logstash/logs
     chown -R logstash:logstash /usr/share/logstash/data /usr/share/logstash/logs
+    : > /usr/share/logstash/logs/startup.log
+    chown logstash:logstash /usr/share/logstash/logs/startup.log
 ' 2>/dev/null || true
 
-# --- Step 4: Start Logstash ---
+# --- Step 4: Validate pipeline config (syntax check) ---
+log_info "Validating Logstash pipeline config..."
+if ! sudo docker exec -u logstash ${LOGSTASH_CONTAINER} \
+      /usr/share/logstash/bin/logstash \
+      --path.settings /usr/share/logstash/config \
+      -t 2>&1 | tail -20; then
+    log_warn "Pipeline validation reported issues (see above)"
+fi
+
+# --- Step 5: Start Logstash ---
 log_info "Starting Logstash..."
 if sudo docker exec ${LOGSTASH_CONTAINER} ps aux 2>/dev/null | grep -q "[j]ava.*logstash"; then
     log_info "Logstash already running -> restarting to apply latest pipeline..."
@@ -63,17 +74,35 @@ if sudo docker exec ${LOGSTASH_CONTAINER} ps aux 2>/dev/null | grep -q "[j]ava.*
     done
 fi
 
-sudo docker exec -d -u logstash ${LOGSTASH_CONTAINER} /usr/share/logstash/bin/logstash \
+# 표준 출력/에러를 startup.log에 캡쳐 (진단 핵심)
+sudo docker exec -d -u logstash ${LOGSTASH_CONTAINER} bash -c '
+  /usr/share/logstash/bin/logstash \
     --path.config /usr/share/logstash/pipeline \
     --path.settings /usr/share/logstash/config \
     --path.data /usr/share/logstash/data \
-    --path.logs /usr/share/logstash/logs
-log_info "Waiting 90s for Logstash JVM..."
-sleep 90
-if sudo docker exec ${LOGSTASH_CONTAINER} ps aux 2>/dev/null | grep -q "[j]ava.*logstash"; then
-    log_ok "Logstash is running"
+    --path.logs /usr/share/logstash/logs \
+    > /usr/share/logstash/logs/startup.log 2>&1
+'
+
+log_info "Waiting for Logstash API (max 120s)..."
+READY=0
+for i in $(seq 1 24); do
+    if sudo docker exec ${LOGSTASH_CONTAINER} \
+         bash -c 'exec 3<>/dev/tcp/127.0.0.1/9600 && echo -e "GET / HTTP/1.0\r\n\r\n" >&3 && cat <&3 | head -1' \
+         2>/dev/null | grep -q "200 OK"; then
+        READY=1
+        break
+    fi
+    sleep 5
+done
+
+if [ "$READY" -eq 1 ]; then
+    log_ok "Logstash API is up (http://localhost:9600)"
+elif sudo docker exec ${LOGSTASH_CONTAINER} ps aux 2>/dev/null | grep -q "[j]ava.*logstash"; then
+    log_warn "Logstash process up but API not responding yet — check logs/startup.log"
 else
-    log_warn "Logstash may not have started"
+    log_error "Logstash failed to start. Last 40 lines of startup.log:"
+    sudo docker exec ${LOGSTASH_CONTAINER} tail -n 40 /usr/share/logstash/logs/startup.log 2>/dev/null || true
 fi
 
 log_ok "Logstash configured"
