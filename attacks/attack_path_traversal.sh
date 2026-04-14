@@ -47,14 +47,18 @@ send_attack_log() {
   local attack_type="$1"
   local http_code="$2"
   local logstash_container="clab-${LAB_NAME}-logstash"
-  local msg
-  msg=$(printf '{"log_type":"attack","attack_type":"%s","http_code":"%s","source":"attacker"}\n' \
-        "$attack_type" "$http_code")
-  # Logstash 컨테이너 내부에서 직접 TCP 입력으로 전송 (방화벽 우회)
-  timeout 5 docker exec -i "${logstash_container}" \
-    bash -c "exec 3<>/dev/tcp/127.0.0.1/5000 && printf '%s' '$msg' >&3" \
-    >/dev/null 2>&1 || true
+  # 환경변수 전달 + outer single-quote로 호스트 bash 확장 방지
+  # bash의 stdout redirect로 TCP 연결, 명령 종료와 함께 자동 close → Logstash가 이벤트 확정
+  timeout 5 sudo docker exec \
+    -e ATK_TYPE="$attack_type" \
+    -e ATK_CODE="$http_code" \
+    "${logstash_container}" \
+    bash -c '
+      MSG=$(printf "{\"log_type\":\"attack\",\"attack_type\":\"%s\",\"http_code\":\"%s\",\"source\":\"attacker\"}\n" "$ATK_TYPE" "$ATK_CODE")
+      printf "%s" "$MSG" > /dev/tcp/127.0.0.1/5000
+    ' >/dev/null 2>&1 || true
 }
+
 
 prepare_attacker
 
