@@ -12,7 +12,6 @@ log_info "Configuring DMZ IDS"
 
 DMZ_IDS_CONTAINER="clab-${LAB_NAME}-DMZ_IDS"
 
-# 1. 컨테이너 실행 대기
 log_info "Waiting for DMZ_IDS container to be running..."
 WAIT=0
 while [ "$WAIT" -lt 60 ]; do
@@ -29,7 +28,6 @@ if [ "$WAIT" -ge 60 ]; then
     exit 1
 fi
 
-# 2. 인터페이스 대기
 log_info "Waiting for eth1 & eth2 interfaces..."
 WAIT=0
 while [ "$WAIT" -lt 30 ]; do
@@ -42,7 +40,6 @@ while [ "$WAIT" -lt 30 ]; do
     sleep 1
 done
 
-# 3. Suricata 설정 생성 — vars 섹션 포함이 핵심
 log_info "Generating Suricata configuration..."
 sudo docker exec -i "${DMZ_IDS_CONTAINER}" bash << 'INNER_CONF'
 mkdir -p /etc/suricata /var/log/suricata
@@ -131,55 +128,73 @@ YAML
 echo "[OK] Suricata config written"
 INNER_CONF
 
-# 4. Suricata 구문 검증 후 실행
 log_info "Validating Suricata config..."
-if sudo docker exec "${DMZ_IDS_CONTAINER}" suricata -T -c /etc/suricata/suricata.yaml 2>&1 | tail -10; then
-    log_ok "Suricata config OK"
-else
-    log_warn "Suricata config validation had warnings (see above)"
-fi
+sudo docker exec "${DMZ_IDS_CONTAINER}" suricata -T -c /etc/suricata/suricata.yaml 2>&1 | tail -5 || true
 
 log_info "Starting Suricata..."
 sudo docker exec "${DMZ_IDS_CONTAINER}" pkill -x suricata 2>/dev/null || true
-sleep 1
+sleep 2
 sudo docker exec -d "${DMZ_IDS_CONTAINER}" bash -c '
+  : > /var/log/suricata/eve.json
   suricata -c /etc/suricata/suricata.yaml -i eth1 --runmode=autofp -D \
     > /var/log/suricata/startup.log 2>&1
 '
 
-sleep 5
-if sudo docker exec "${DMZ_IDS_CONTAINER}" pgrep -x suricata &>/dev/null; then
-    log_ok "Suricata started successfully"
+# "Engine started" 로그를 근거로 판단 (pgrep은 fork 타이밍 민감)
+log_info "Waiting up to 20s for Suricata engine to come up..."
+ENGINE_UP=0
+for i in $(seq 1 20); do
+    if sudo docker exec "${DMZ_IDS_CONTAINER}" \
+         grep -q "Engine started" /var/log/suricata/suricata.log 2>/dev/null; then
+        ENGINE_UP=1
+        break
+    fi
+    sleep 1
+done
+
+if [ "$ENGINE_UP" -eq 1 ]; then
+    log_ok "Suricata engine started"
 else
-    log_error "Suricata failed to start. startup.log:"
-    sudo docker exec "${DMZ_IDS_CONTAINER}" tail -n 30 /var/log/suricata/startup.log 2>/dev/null || true
-    log_error "suricata.log:"
-    sudo docker exec "${DMZ_IDS_CONTAINER}" tail -n 30 /var/log/suricata/suricata.log 2>/dev/null || true
+    log_warn "Suricata engine not confirmed. Tail of suricata.log:"
+    sudo docker exec "${DMZ_IDS_CONTAINER}" tail -n 20 /var/log/suricata/suricata.log 2>/dev/null || true
 fi
 
-# 5. Filebeat 설치 및 eve.json을 Logstash로 전송 (port 5045)
-log_info "Installing & configuring Filebeat in DMZ_IDS..."
+# -----------------------------------------------------------------------------
+# Filebeat — apt는 신뢰도 낮아서 tarball 직접 설치
+# -----------------------------------------------------------------------------
+log_info "Installing Filebeat via tarball (bypassing apt)..."
 sudo docker exec -i \
     -e SIEM_LOGSTASH_ETH1_IP="${SIEM_LOGSTASH_ETH1_IP}" \
     "${DMZ_IDS_CONTAINER}" bash << 'FB_INSTALL'
 set -e
-if ! command -v filebeat >/dev/null 2>&1; then
-    if command -v apt-get >/dev/null 2>&1; then
-        export DEBIAN_FRONTEND=noninteractive
-        apt-get update -qq >/dev/null 2>&1 || true
-        apt-get install -y --no-install-recommends curl gnupg ca-certificates >/dev/null 2>&1 || true
-        curl -fsSL https://artifacts.elastic.co/GPG-KEY-elasticsearch \
-            | gpg --dearmor -o /usr/share/keyrings/elastic.gpg 2>/dev/null || true
-        echo "deb [signed-by=/usr/share/keyrings/elastic.gpg] https://artifacts.elastic.co/packages/9.x/apt stable main" \
-            > /etc/apt/sources.list.d/elastic-9.x.list
-        apt-get update -qq >/dev/null 2>&1 || true
-        apt-get install -y filebeat >/dev/null 2>&1 || true
+LS_HOST="${SIEM_LOGSTASH_ETH1_IP%/*}"
+FB_VER="9.2.1"
+FB_DIR="/opt/filebeat-${FB_VER}-linux-x86_64"
+FB_BIN="${FB_DIR}/filebeat"
+
+if [ ! -x "${FB_BIN}" ]; then
+    if ! command -v curl >/dev/null 2>&1; then
+        if command -v apt-get >/dev/null 2>&1; then
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update -qq >/dev/null 2>&1 || true
+            apt-get install -y --no-install-recommends curl ca-certificates >/dev/null 2>&1 || true
+        fi
+    fi
+    mkdir -p /opt
+    cd /opt
+    if curl -fsSL -o filebeat.tar.gz \
+         "https://artifacts.elastic.co/downloads/beats/filebeat/filebeat-${FB_VER}-linux-x86_64.tar.gz"; then
+        tar xzf filebeat.tar.gz
+        rm -f filebeat.tar.gz
+        ln -sf "${FB_BIN}" /usr/local/bin/filebeat
+        echo "[OK] Filebeat tarball installed: $(ls -la ${FB_BIN})"
+    else
+        echo "[ERROR] Failed to download Filebeat tarball"
+        exit 0
     fi
 fi
 
-LS_HOST="${SIEM_LOGSTASH_ETH1_IP%/*}"
-
-mkdir -p /etc/filebeat /var/lib/filebeat /var/log
+mkdir -p /etc/filebeat /var/lib/filebeat
 cat > /etc/filebeat/filebeat.yml << FB_CONF
 filebeat.inputs:
   - type: filestream
@@ -208,21 +223,20 @@ FB_CONF
 
 pkill -x filebeat 2>/dev/null || true
 sleep 1
-FILEBEAT_BIN="$(command -v filebeat || true)"
-if [ -z "${FILEBEAT_BIN}" ] && [ -x /usr/share/filebeat/bin/filebeat ]; then
-    FILEBEAT_BIN="/usr/share/filebeat/bin/filebeat"
-fi
-if [ -n "${FILEBEAT_BIN}" ]; then
-    nohup "${FILEBEAT_BIN}" -e -c /etc/filebeat/filebeat.yml \
+if [ -x "${FB_BIN}" ] || command -v filebeat >/dev/null 2>&1; then
+    FB_CMD="${FB_BIN}"
+    [ -x "$FB_CMD" ] || FB_CMD="$(command -v filebeat)"
+    nohup "$FB_CMD" -e -c /etc/filebeat/filebeat.yml \
       > /var/log/filebeat.log 2>&1 &
     sleep 2
-    if pgrep -x filebeat >/dev/null 2>&1; then
+    if pgrep -f "filebeat.*filebeat.yml" >/dev/null 2>&1; then
         echo "[OK] Filebeat started (shipping eve.json → ${LS_HOST}:5045)"
     else
-        echo "[WARN] Filebeat not running — see /var/log/filebeat.log"
+        echo "[WARN] Filebeat not running — tail /var/log/filebeat.log:"
+        tail -n 20 /var/log/filebeat.log 2>/dev/null || true
     fi
 else
-    echo "[WARN] Filebeat binary not found"
+    echo "[WARN] Filebeat binary still missing — IDS logs will not ship"
 fi
 FB_INSTALL
 
