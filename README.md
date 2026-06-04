@@ -779,12 +779,6 @@ docker system prune -f
 
 ---
 
-## License
-
-This project is licensed under the MIT License.
-
----
-
 ## Author
 
 Created by [RaonL](https://github.com/RaonL).
